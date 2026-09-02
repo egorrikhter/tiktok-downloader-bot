@@ -33,19 +33,14 @@ async def echo_handler(message: Message) -> None:
     if "tiktok.com" not in message.text:
         await message.answer("Неверный формат ссылки")
         return
-    file_path = None
     try:
         file_path = await download_video(message.text)
         await message.answer_video(FSInputFile(file_path), supports_streaming=True)
     except ValueError as error:
         logging.error(f"При скачивании файла возникла ошибка: {error}")
-        await message.answer(f"При скачивании файла возникла ошибка: {html.escape(str(error))}")
-    except FileNotFoundError as error:
-        logging.error(error)
-        await message.answer(f"{error}")
-    finally:
-        if file_path and await asyncio.to_thread(exists, file_path):
-            await asyncio.to_thread(remove, file_path)
+        await message.answer(
+            f"При скачивании файла возникла ошибка: {html.escape(str(error))}"
+        )
 
 
 async def main() -> None:

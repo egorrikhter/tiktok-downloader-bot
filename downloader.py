@@ -1,45 +1,35 @@
 import asyncio
-import os
-import sys
-import uuid
+import logging
+from os import getenv
+
+import aiohttp
+from dotenv.main import load_dotenv
+
+load_dotenv()
+MY_API_KEY = getenv("MY_API_KEY")
+API_URL = "https://api.tikwmapi.com"
+headers = {"x-tikwmapi-key": str(MY_API_KEY)}
 
 
-async def download_video(url: str) -> str:
-    file_id = str(uuid.uuid4())
-    if not await asyncio.to_thread(os.path.exists, "downloads"):
-        await asyncio.to_thread(os.makedirs, "downloads")
-    template = f"downloads/{file_id}.%(ext)s"
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "yt_dlp",
-        "--proxy", "",
-        "-o", template,
-        "-f", "b",  # или "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-        "--merge-output-format", "mp4",
-        "--impersonate", "chrome",
-        "--cookies", "cookies.txt",
-        url,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise ValueError(stderr.decode())
-    else:
-        found_file = next(
-            (
-                f
-                for f in await asyncio.to_thread(os.listdir, "downloads")
-                if f.startswith(file_id)
-            ),
-            None,
-        )
-        rel_path = (
-            os.path.relpath(os.path.join("downloads", found_file))
-            if found_file
-            else None
-        )
-        if rel_path is None:
-            raise FileNotFoundError("Файл не найден")
-        return rel_path
+async def download_video(url: str) -> dict[str, str]:
+    params = {"url": url, "hd": 1}
+    async with (
+        aiohttp.ClientSession() as session,
+        session.get(API_URL, params=params, headers=headers) as resp,
+    ):
+        if resp.status != 200:
+            error = {"code": resp.status, "error": await resp.text()}
+            print(error)
+            return error
+        else:
+            data = await resp.json()
+            print(data)
+            return data
+
+
+if __name__ == "__main__":
+    asyncio.run(download_video("https://vm.tiktok.com/ZN8YJG2hN/"))
+
+
+# все сработало, думаю что нельзя делать как я сделал в 11 строчке, подумать об этом потом
+# а вообще надо теперь делать парсинг, получать из ответа только title, url
