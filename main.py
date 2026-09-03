@@ -1,19 +1,20 @@
 import asyncio
-import html
 import logging
 import sys
-from os import getenv, remove
-from os.path import exists
+from os import getenv
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
-from aiogram.types import FSInputFile, Message
+from aiogram.types import Message
 from dotenv import load_dotenv
 
 from database import close_db, init_db
 from downloader import download_video
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 dp = Dispatcher()
@@ -21,26 +22,41 @@ dp = Dispatcher()
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
-    await message.answer("Присылайте ссылку на видео!")
+    await message.answer("Send video link!")
 
 
 @dp.message()
 async def echo_handler(message: Message) -> None:
     if not message.text:
-        await message.answer("Вы прислали не текст")
+        await message.answer("You didn't send link.")
         return
 
     if "tiktok.com" not in message.text:
-        await message.answer("Неверный формат ссылки")
+        await message.answer("Invalid link format.")
         return
     try:
-        file_path = await download_video(message.text)
-        await message.answer_video(FSInputFile(file_path), supports_streaming=True)
+        video_link = await download_video(message.text)
+
     except ValueError as error:
-        logging.error(f"При скачивании файла возникла ошибка: {error}")
-        await message.answer(
-            f"При скачивании файла возникла ошибка: {html.escape(str(error))}"
-        )
+        logger.error(f"Download failed: {error}")
+        await message.answer("The download server is temporarily unresponsive.")
+        return
+
+    try:
+        await message.answer_video(video=video_link)
+
+    except TelegramBadRequest as err:
+        logger.error(f"Bad request error, {err}")
+        if (
+            "file is too big" in str(err).lower()
+            or "req_file_too_big" in str(err).lower()
+        ):
+            await message.answer(
+                f"The video is too large to send directly via Telegram. You can download the video directly via the link: {video_link}"
+            )
+        else:
+            await message.answer("Failed to send video. Please try again later.")
+        return
 
 
 async def main() -> None:
