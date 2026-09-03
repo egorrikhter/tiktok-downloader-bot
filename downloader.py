@@ -1,45 +1,44 @@
 import asyncio
-import os
-import sys
-import uuid
+from os import getenv
+
+import aiohttp
+from aiohttp import ClientTimeout
+from dotenv import load_dotenv
+
+load_dotenv()
+MY_API_KEY = getenv("MY_API_KEY")
+API_URL = "https://api.tikwmapi.com"
+
+if not MY_API_KEY:
+    raise ValueError("Critical error: environment variable MY_API_KEY is not set")
+headers = {"x-tikwmapi-key": MY_API_KEY}
 
 
 async def download_video(url: str) -> str:
-    file_id = str(uuid.uuid4())
-    if not await asyncio.to_thread(os.path.exists, "downloads"):
-        await asyncio.to_thread(os.makedirs, "downloads")
-    template = f"downloads/{file_id}.%(ext)s"
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "yt_dlp",
-        "--proxy", "",
-        "-o", template,
-        "-f", "b",  # или "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-        "--merge-output-format", "mp4",
-        "--impersonate", "chrome",
-        "--cookies", "cookies.txt",
-        url,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise ValueError(stderr.decode())
-    else:
-        found_file = next(
-            (
-                f
-                for f in await asyncio.to_thread(os.listdir, "downloads")
-                if f.startswith(file_id)
-            ),
-            None,
+    params = {"url": url, "hd": 1}
+    try:
+        async with (
+            aiohttp.ClientSession(timeout=ClientTimeout(10)) as session,
+            session.get(API_URL, params=params, headers=headers) as resp,
+        ):
+            if resp.status != 200:
+                error = {"code": resp.status, "error": await resp.text()}
+                raise ValueError(f"Critical error: {error}")
+
+            else:
+                data = await resp.json()
+                if data["code"] != 0:
+                    raise ValueError(f"Error code {data['code']}, {data['msg']}")
+
+                video_link = data["data"].get("hdplay") or data["data"].get("play")
+                if not video_link:
+                    raise ValueError("Direct link to the video not found")
+                return video_link
+
+    except asyncio.TimeoutError:
+        raise ValueError(
+            "Request timed out: external API did not respond in 10 seconds"
         )
-        rel_path = (
-            os.path.relpath(os.path.join("downloads", found_file))
-            if found_file
-            else None
-        )
-        if rel_path is None:
-            raise FileNotFoundError("Файл не найден")
-        return rel_path
+
+    except aiohttp.ClientError as err:
+        raise ValueError(f"Error: {err}")
