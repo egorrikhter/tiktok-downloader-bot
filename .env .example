@@ -1,0 +1,7 @@
+BOT_TOKEN=your_bot_token_here
+API_KEY=your_api_key_here
+DB_USER=postgres
+DB_PASSWORD=your_password_here
+DB_NAME=tiktok_bot
+DB_HOST=localhost
+DB_PORT=5432
